@@ -1,43 +1,43 @@
-// This Pine Script™ code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// This Pine Script™ code is subject to the terms of the Mozilla Public License 2.0 
 // © Mr_Rakun
 
 //@version=6
-indicator("FVG Radar [Mr_Rakun]", overlay=true)
+indicator("FVG Radar+ Alerts", overlay=true)
 
+// === INPUTS ===
 i_up = input.float(5, "Radar Upper Band (%)", group = "Visibility")
 i_down = input.float(10, "Radar Lower Band (%) ", group = "Visibility")
 i_per = input.float(0.05, "Minimum FVG Size (%)", group = "Visibility")
-half = input.bool(true, "Clear FVG When Price Reaches Half",
-     tooltip = "If disabled, the price must fully fill the FVG to clear it.", group = "Visibility")
-i_alarm = input.int(5, "Wait X Bars After FVG Formation",
-     tooltip="Number of bars to wait after a Fair Value Gap is detected before triggering an alert.", group="Alert Trigger")
-tsize = input.int(10, "Text Size", group="Style", tooltip = "0 = Auto\n8 = Min\n36 = Max")
+half = input.bool(true, "Clear FVG When Price Reaches Half", group = "Visibility")
+i_alarm = input.int(5, "Wait X Bars After FVG Formation", group="Alert Trigger")
+
+tsize = input.int(10, "Text Size", group="Style")
 bullColor = input.color(color.green, "Bullish FVG Color", group="Style")
 bearColor = input.color(color.red, "Bearish FVG Color", group="Style")
 radarColor = input.color(color.yellow, "Radar Color", group="Style")
 opacity = input.int(70, "Opacity", minval=0, maxval=100, group="Style")
 radar = input.bool(true, "Radar Show/Hide", group="Style")
 
+// === TYPES ===
 type bullFVG
     float bullHigh
     float bullLow
     int bullTime
     int bullBar = bar_index
+
 type bearFVG
     float bearHigh
     float bearLow
     int bearTime
-    int bearBar = bar_index 
+    int bearBar = bar_index
 
+// === ARRAYS ===
 var bullFvg = array.new<bullFVG>()
 var bearFvg = array.new<bearFVG>()
 
-// Function to detect Fair Value Gaps with price levels
+// === DETECT FVG ===
 detectFVG() =>
-    // Bullish FVG: Higher low body with lower high body
     isBullishFVG = close[1] > high[2] and low > high[2]
-    
-    // Bearish FVG: Lower high body with higher low body
     isBearishFVG = close[1] < low[2] and high < low[2]
 
     newBullFvg = bullFVG.new(low, high[2], time[1])
@@ -48,56 +48,81 @@ detectFVG() =>
 
     if isBullishFVG and bullper > i_per
         bullFvg.push(newBullFvg)
+
     if isBearishFVG and bearper > i_per
         bearFvg.push(newBearFvg)
 
-    if bullFvg.size() > 100 //bullFVGsize
+    if bullFvg.size() > 100
         array.shift(bullFvg)
-    if bearFvg.size() > 100 //bearFVGsize
+
+    if bearFvg.size() > 100
         array.shift(bearFvg)
 
-
     [isBullishFVG, isBearishFVG]
-// Main calculation
+
+// === MAIN ===
 [bullTrigger, bearTrigger] = detectFVG()
 
-// Box parameters
+// ✅ NEW ALERT CONDITIONS (FVG FORMATION)
+alertcondition(bullTrigger, title="Bullish FVG Formed", message="Bullish FVG detected")
+
+alertcondition(bearTrigger, title="Bearish FVG Formed", message="Bearish FVG detected")
+
+// === COLORS ===
 bullFVGColor = color.new(bullColor, opacity)
 bearFVGColor = color.new(bearColor, opacity)
 
+// === CLEAR OLD BOXES ===
 a_allBoxes = box.all
 if array.size(a_allBoxes) > 0
     for i = 0 to array.size(a_allBoxes) - 1
         box.delete(array.get(a_allBoxes, i))
 
+// === DRAW BULL FVG ===
 if barstate.islast and bullFvg.size() > 0
     for i = 0 to bullFvg.size() - 1
         bullList = bullFvg.get(i)
         yuzde = ((close - bullList.bullHigh) / close) * 100
+
         if yuzde < i_down
             per = ((bullList.bullHigh - bullList.bullLow) / bullList.bullLow) * 100
-            bullBox = box.new(left=bullList.bullTime, top=bullList.bullHigh, right=time_close, bottom=bullList.bullLow, 
-                 border_color=color.new(bullColor, 70), 
-                 text = str.tostring(per, format.percent),
-                 text_size = tsize,
-                 text_halign = text.align_right,
-                 text_color = color.green,
-                 bgcolor=bullFVGColor, xloc = xloc.bar_time)
 
+            box.new(
+                 left=bullList.bullTime,
+                 top=bullList.bullHigh,
+                 right=time_close,
+                 bottom=bullList.bullLow,
+                 border_color=color.new(bullColor, 70),
+                 text=str.tostring(per, format.percent),
+                 text_size=tsize,
+                 text_halign=text.align_right,
+                 text_color=color.green,
+                 bgcolor=bullFVGColor,
+                 xloc=xloc.bar_time)
+
+// === DRAW BEAR FVG ===
 if barstate.islast and bearFvg.size() > 0
     for i = 0 to bearFvg.size() - 1
         bearList = bearFvg.get(i)
         yuzde = ((bearList.bearLow - close) / bearList.bearLow) * 100
+
         if yuzde < i_up
             per = ((bearList.bearLow - bearList.bearHigh) / bearList.bearHigh) * 100
-            bearBox = box.new(left=bearList.bearTime, top=bearList.bearHigh, right=time_close, bottom=bearList.bearLow, 
-                 border_color=color.new(bearColor, 70), 
-                 text = str.tostring(per, format.percent),
-                 text_size = tsize,
-                 text_halign = text.align_right,
-                 text_color = color.red, 
-                 bgcolor=bearFVGColor, xloc = xloc.bar_time)
 
+            box.new(
+                 left=bearList.bearTime,
+                 top=bearList.bearHigh,
+                 right=time_close,
+                 bottom=bearList.bearLow,
+                 border_color=color.new(bearColor, 70),
+                 text=str.tostring(per, format.percent),
+                 text_size=tsize,
+                 text_halign=text.align_right,
+                 text_color=color.red,
+                 bgcolor=bearFVGColor,
+                 xloc=xloc.bar_time)
+
+// === CLEANUP LOGIC ===
 if bullFvg.size() > 0
     for i = bullFvg.size() - 1 to 0
         bullItem = bullFvg.get(i)
@@ -106,17 +131,9 @@ if bullFvg.size() > 0
         if half
             if ta.crossunder(low, middlePoint)
                 bullFvg.remove(i)
-                barsize = bar_index - bullItem.bullBar
-                if barsize > i_alarm
-                    alert("Bull FVG Yarısı Alındı", alert.freq_once_per_bar_close)
         else
             if ta.crossunder(low, bullItem.bullLow)
                 bullFvg.remove(i)
-                alert("Bull FVG Alanı Alındı", alert.freq_once_per_bar_close)
-            if ta.crossunder(low, bullItem.bullHigh)
-                barsize = bar_index - bullItem.bullBar
-                if barsize > i_alarm
-                    alert("Bull FVG Alanına Girildi", alert.freq_once_per_bar_close)
 
 if bearFvg.size() > 0
     for i = bearFvg.size() - 1 to 0
@@ -126,29 +143,26 @@ if bearFvg.size() > 0
         if half
             if ta.crossover(high, middlePoint)
                 bearFvg.remove(i)
-                barsize = bar_index - bearItem.bearBar
-                if barsize > i_alarm
-                    alert("Bear FVG Yarısı Alındı", alert.freq_once_per_bar_close)
         else
             if ta.crossover(high, bearItem.bearLow)
                 bearFvg.remove(i)
-                alert("Bear FVG Alanı Alındı", alert.freq_once_per_bar_close)
-            if ta.crossover(high, bearItem.bearHigh)
-                barsize = bar_index - bearItem.bearBar
-                if barsize > i_alarm
-                    alert("Bear FVG Alanına Girildi", alert.freq_once_per_bar_close)
 
+// === RADAR ===
 lh = close * (1 + (i_up / 100))
 ll = close * (1 - (i_down / 100))
 
 if radar
-    box.new(bar_index, lh, bar_index + 20, ll,
-         border_color = color.new(radarColor, 60),
-         extend = extend.left,
-         bgcolor = color.new(radarColor, 100),
-         border_style = line.style_dotted,
-         text = "Radar Area",
-         text_size = tsize,
-         text_halign = text.align_right,
-         text_valign = text.align_top,
-         text_color = radarColor)
+    box.new(
+         bar_index,
+         lh,
+         bar_index + 20,
+         ll,
+         border_color=color.new(radarColor, 60),
+         extend=extend.left,
+         bgcolor=color.new(radarColor, 100),
+         border_style=line.style_dotted,
+         text="Radar Area",
+         text_size=tsize,
+         text_halign=text.align_right,
+         text_valign=text.align_top,
+         text_color=radarColor)
